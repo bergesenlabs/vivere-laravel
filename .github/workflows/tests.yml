@@ -5,7 +5,11 @@ on:
   pull_request:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The bergesenlabs org runner linux-1 has no sudo, so setup-php cannot
+    # install PHP there. Each leg runs in the official PHP image instead, on the
+    # runner's rootless Docker, and installs Composer itself.
+    runs-on: [self-hosted, bergesen-big, Linux]
+    container: php:${{ matrix.php }}-cli
     strategy:
       fail-fast: false
       matrix:
@@ -17,10 +21,13 @@ jobs:
     name: PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}
     steps:
       - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
-        with:
-          php: ${{ matrix.php }}
-          coverage: none
+      - name: Install git, unzip and Composer
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git unzip > /dev/null
+          php -r "copy('https://getcomposer.org/installer', '/tmp/composer-setup.php');"
+          php /tmp/composer-setup.php --quiet --install-dir=/usr/local/bin --filename=composer
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: composer require "illuminate/console:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
       - run: composer update --prefer-dist --no-interaction --no-progress
       - run: vendor/bin/phpunit
